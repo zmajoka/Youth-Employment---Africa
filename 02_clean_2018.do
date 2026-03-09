@@ -1213,6 +1213,22 @@ label data "EHCVM Senegal 2018 - Cleaned"
 compress
 save "${intermediate}/SEN_2018_cleaned.dta", replace
 
+*--- Create 5-household subset for sharing ---
+set seed 12345
+preserve
+    * Pick 5 unique households
+    bysort hhid: gen _first = (_n == 1)
+    gen _rand = runiform() if _first == 1
+    bysort hhid (_rand): replace _rand = _rand[1]
+    egen _rank = rank(_rand) if _first == 1, unique
+    bysort hhid (_rank): replace _rank = _rank[1]
+    keep if _rank <= 5
+    drop _first _rand _rank
+    save "${output}/SEN_2018_cleaned_subset5.dta", replace
+    export excel using "${output}/SEN_2018_cleaned_subset5.xlsx", firstrow(variables) replace
+    di as result "Subset saved: 5 households from 2018 data"
+restore
+
 ********************************************************************************
 * PART 8: QUALITY CHECKS
 ********************************************************************************
