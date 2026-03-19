@@ -236,6 +236,11 @@ tab year is_panel, m
 di "Number of panel households: "
 distinct hhpanel if is_panel == 1
 
+* Create time-invariant weight using 2018 (baseline) value
+* xtreg, fe requires weights to be constant within panel unit
+bysort hhpanel (year): gen hhweight_base = hhweight[1]
+label var hhweight_base "HH weight (baseline 2018, time-invariant)"
+
 * Rename shock variables for clarity
 rename sh_id_demo shock_demo
 rename sh_co_natu shock_natural
@@ -378,7 +383,7 @@ xtset hhpanel year
 
 * Column 1: Pooled OLS, no controls
 reg ln_pc_total neg_shock has_enterprise enterprise_x_shock ///
-    i.year [pw=hhweight], cluster(grappe)
+    i.year [pw=hhweight_base], cluster(grappe)
 estimates store col1_ols
 
 lincom neg_shock + enterprise_x_shock
@@ -388,7 +393,7 @@ test neg_shock + enterprise_x_shock = 0
 
 * Column 2: Panel FE + region x year FE
 xtreg ln_pc_total neg_shock has_enterprise enterprise_x_shock ///
-      i.year##i.region [pw=hhweight], ///
+      i.year##i.region [pw=hhweight_base], ///
       fe vce(cluster grappe)
 estimates store col2_fe
 
@@ -396,7 +401,7 @@ estimates store col2_fe
 * Column 3: Panel FE + demographic controls
 xtreg ln_pc_total neg_shock has_enterprise enterprise_x_shock ///
       hhsize hage hgender i.heduc ///
-      i.year##i.region [pw=hhweight], ///
+      i.year##i.region [pw=hhweight_base], ///
       fe vce(cluster grappe)
 estimates store col3_fe_demo
 
@@ -406,7 +411,7 @@ xtreg ln_pc_total neg_shock has_enterprise enterprise_x_shock ///
       hhsize hage hgender i.heduc has_bank tv frigo milieu ///
       shock_x_hhsize shock_x_hage shock_x_hgender shock_x_heduc ///
       shock_x_bank shock_x_tv shock_x_frigo shock_x_milieu ///
-      i.year##i.region [pw=hhweight], ///
+      i.year##i.region [pw=hhweight_base], ///
       fe vce(cluster grappe)
 estimates store col4_preferred
 
@@ -422,7 +427,7 @@ xtreg ln_pc_total neg_shock has_enterprise enterprise_x_shock ///
       hhsize hage hgender i.heduc has_bank tv frigo milieu ///
       shock_x_hhsize shock_x_hage shock_x_hgender shock_x_heduc ///
       shock_x_bank shock_x_tv shock_x_frigo shock_x_milieu ///
-      i.year##i.region [pw=hhweight] ///
+      i.year##i.region [pw=hhweight_base] ///
       if welfare_quintile <= 3, ///
       fe vce(cluster grappe)
 estimates store col5_poor
@@ -452,7 +457,7 @@ xtreg ln_pc_food neg_shock has_enterprise enterprise_x_shock ///
       hhsize hage hgender i.heduc has_bank tv frigo milieu ///
       shock_x_hhsize shock_x_hage shock_x_hgender shock_x_heduc ///
       shock_x_bank shock_x_tv shock_x_frigo shock_x_milieu ///
-      i.year##i.region [pw=hhweight], ///
+      i.year##i.region [pw=hhweight_base], ///
       fe vce(cluster grappe)
 estimates store food
 
@@ -461,7 +466,7 @@ xtreg ln_pc_nfood neg_shock has_enterprise enterprise_x_shock ///
       hhsize hage hgender i.heduc has_bank tv frigo milieu ///
       shock_x_hhsize shock_x_hage shock_x_hgender shock_x_heduc ///
       shock_x_bank shock_x_tv shock_x_frigo shock_x_milieu ///
-      i.year##i.region [pw=hhweight], ///
+      i.year##i.region [pw=hhweight_base], ///
       fe vce(cluster grappe)
 estimates store nonfood
 
@@ -481,7 +486,7 @@ esttab col4_preferred food nonfood ///
 * Natural/weather shocks
 xtreg ln_pc_total shock_natural has_enterprise enterprise_x_natural ///
       hhsize hage hgender i.heduc has_bank ///
-      i.year##i.region [pw=hhweight], ///
+      i.year##i.region [pw=hhweight_base], ///
       fe vce(cluster grappe)
 estimates store natural
 
@@ -491,21 +496,21 @@ test shock_natural + enterprise_x_natural = 0
 * Demographic shocks (illness/death)
 xtreg ln_pc_total shock_demo has_enterprise enterprise_x_demo ///
       hhsize hage hgender i.heduc has_bank ///
-      i.year##i.region [pw=hhweight], ///
+      i.year##i.region [pw=hhweight_base], ///
       fe vce(cluster grappe)
 estimates store demo
 
 * Economic covariate shocks (price increases)
 xtreg ln_pc_total shock_econ_cov has_enterprise enterprise_x_econcov ///
       hhsize hage hgender i.heduc has_bank ///
-      i.year##i.region [pw=hhweight], ///
+      i.year##i.region [pw=hhweight_base], ///
       fe vce(cluster grappe)
 estimates store econcov
 
 * Idiosyncratic economic shocks (job loss, business failure)
 xtreg ln_pc_total shock_econ_idio has_enterprise enterprise_x_econidio ///
       hhsize hage hgender i.heduc has_bank ///
-      i.year##i.region [pw=hhweight], ///
+      i.year##i.region [pw=hhweight_base], ///
       fe vce(cluster grappe)
 estimates store econidio
 
@@ -535,7 +540,7 @@ forvalues m = 1/2 {
     di _n "=== `mlab' ==="
     xtreg ln_pc_total neg_shock has_enterprise enterprise_x_shock ///
           hhsize hage hgender i.heduc has_bank ///
-          i.year##i.region [pw=hhweight] ///
+          i.year##i.region [pw=hhweight_base] ///
           if milieu == `m', ///
           fe vce(cluster grappe)
     lincom neg_shock + enterprise_x_shock
@@ -546,7 +551,7 @@ forvalues q = 1/5 {
     di _n "=== Wealth Quintile `q' ==="
     xtreg ln_pc_total neg_shock has_enterprise enterprise_x_shock ///
           hhsize hage hgender i.heduc has_bank ///
-          i.year##i.region [pw=hhweight] ///
+          i.year##i.region [pw=hhweight_base] ///
           if welfare_quintile == `q', ///
           fe vce(cluster grappe)
     lincom neg_shock + enterprise_x_shock
@@ -559,7 +564,7 @@ foreach etype in ent_food ent_confection ent_construct ent_commerce ///
     di _n "=== Enterprise type: `etype' ==="
     xtreg ln_pc_total neg_shock `etype' `etype'_x_shock ///
           hhsize hage hgender i.heduc has_bank ///
-          i.year##i.region [pw=hhweight], ///
+          i.year##i.region [pw=hhweight_base], ///
           fe vce(cluster grappe)
     estimates store het_`etype'
 
@@ -574,7 +579,7 @@ xtreg ln_pc_total neg_shock ///
       ent_commerce_x_shock ent_liberal_x_shock ent_services_x_shock ///
       ent_restaurant_x_shock ent_rental_x_shock ent_other_x_shock ///
       hhsize hage hgender i.heduc has_bank ///
-      i.year##i.region [pw=hhweight], ///
+      i.year##i.region [pw=hhweight_base], ///
       fe vce(cluster grappe)
 estimates store het_all_types
 
@@ -583,7 +588,7 @@ capture confirm variable ent_share
 if _rc == 0 {
     xtreg ln_pc_total neg_shock ent_share ent_share_x_shock ///
           hhsize hage hgender i.heduc has_bank ///
-          i.year##i.region [pw=hhweight], ///
+          i.year##i.region [pw=hhweight_base], ///
           fe vce(cluster grappe)
     estimates store intensive
 }
@@ -600,7 +605,7 @@ if _rc == 0 {
 * Use real (spatially deflated) consumption
 xtreg ln_real_pc_total neg_shock has_enterprise enterprise_x_shock ///
       hhsize hage hgender i.heduc has_bank ///
-      i.year##i.region [pw=hhweight], ///
+      i.year##i.region [pw=hhweight_base], ///
       fe vce(cluster grappe)
 estimates store robust_real
 
@@ -619,7 +624,7 @@ foreach var in has_enterprise neg_shock hhsize hage has_bank {
 reg ln_pc_total neg_shock has_enterprise enterprise_x_shock ///
     hhsize hage hgender i.heduc has_bank ///
     mean_has_enterprise mean_neg_shock mean_hhsize mean_hage mean_has_bank ///
-    i.year##i.region [pw=hhweight], ///
+    i.year##i.region [pw=hhweight_base], ///
     cluster(grappe)
 estimates store robust_mundlak
 
@@ -631,7 +636,7 @@ preserve
     gen abs_d_ln_cons = abs(d_ln_cons)
 
     reg abs_d_ln_cons has_enterprise hhsize hage hgender i.heduc has_bank ///
-        i.region milieu [pw=hhweight], ///
+        i.region milieu [pw=hhweight_base], ///
         cluster(grappe)
     estimates store robust_volatility
 restore
@@ -642,7 +647,7 @@ gen enterprise_x_noshock = has_enterprise * no_shock
 
 xtreg ln_pc_total no_shock has_enterprise enterprise_x_noshock ///
       hhsize hage hgender i.heduc has_bank ///
-      i.year##i.region [pw=hhweight], ///
+      i.year##i.region [pw=hhweight_base], ///
       fe vce(cluster grappe)
 estimates store robust_placebo
 
