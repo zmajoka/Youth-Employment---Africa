@@ -1219,6 +1219,50 @@ replace hh_remit_from_abroad = 0 if _merge == 1
 drop _merge
 
 ********************************************************************************
+* PART 6b: BANK ACCOUNT AND INTERNET ACCESS (from ehcvm_individu) - 2021
+********************************************************************************
+
+* These variables exist in the raw ehcvm_individu data but were not kept in
+* Part 2 (which only kept demographics). We reload and merge them here.
+* Source: ehcvm_individu_sen2021 — variables "bank" and "internet"
+
+*------------------------------------------------------------------------------
+* 6b.1: Bank account — HH-level indicator
+*------------------------------------------------------------------------------
+* "bank" = has bank or other financial account (individual-level, coded 1=yes)
+* We collapse to HH level: 1 if any member has an account.
+
+preserve
+    use "${data_2021}/ehcvm_individu_sen2021", clear
+    gen has_bank_ind = (bank == 1) if !missing(bank)
+    collapse (max) has_bank = has_bank_ind, by(grappe menage)
+    label variable has_bank "HH has bank/financial account"
+    tempfile bank_2021
+    save `bank_2021'
+restore
+
+merge m:1 grappe menage using `bank_2021', nogen keep(master match)
+replace has_bank = 0 if missing(has_bank)
+
+*------------------------------------------------------------------------------
+* 6b.2: Internet access — individual-level indicator
+*------------------------------------------------------------------------------
+* "internet" = individual uses internet (coded 0/1)
+
+preserve
+    use "${data_2021}/ehcvm_individu_sen2021", clear
+    keep grappe menage numind internet
+    rename internet has_internet
+    label variable has_internet "Individual has internet access"
+    tempfile internet_2021
+    save `internet_2021'
+restore
+
+merge 1:1 grappe menage numind using `internet_2021', nogen keep(master match)
+replace has_internet = 0 if missing(has_internet)
+
+
+********************************************************************************
 * PART 7: FINAL ORGANIZATION - 2021
 ********************************************************************************
 
