@@ -112,6 +112,7 @@ capture rename ent_2018 ent_2018  // already named
 * Individual characteristics
 rename zae zae_2018
 rename milieu milieu_2018
+capture rename lien lien_2018
 
 * Enterprise variables (only exist for entrepreneurs)
 foreach v in proprietor_id nonag_id is_proprietor {
@@ -234,6 +235,44 @@ label variable is_hh_head_2018 "Is household head in 2018"
 bysort hhid: egen byte hh_has_enterprise_2018 = max(ent_2018)
 label variable hh_has_enterprise_2018 "Household has at least one enterprise in 2018"
 
+* ----- Merge enterprise screening data for enterprise-type dummies -----
+* Source: s10_1_me_sen2018 (HH-level screening: s10q02-s10q10)
+preserve
+    use "${data_2018}/s10_1_me_sen2018.dta", clear
+    * Create enterprise-type dummies from screening questions
+    * s10q02=food, s10q03=confection, s10q04=construction, s10q05=commerce,
+    * s10q06=liberal profession, s10q07=services, s10q08=restaurant,
+    * s10q09=rental, s10q10=other non-agricultural
+    foreach v in s10q02 s10q03 s10q04 s10q05 s10q06 s10q07 s10q08 s10q09 s10q10 {
+        replace `v' = 0 if `v' != 1
+    }
+    rename s10q02 ent_food_2018
+    rename s10q03 ent_confection_2018
+    rename s10q04 ent_construct_2018
+    rename s10q05 ent_commerce_2018
+    rename s10q06 ent_liberal_2018
+    rename s10q07 ent_services_2018
+    rename s10q08 ent_restaurant_2018
+    rename s10q09 ent_rental_2018
+    rename s10q10 ent_other_2018
+    keep grappe menage ent_food_2018 ent_confection_2018 ent_construct_2018 ///
+        ent_commerce_2018 ent_liberal_2018 ent_services_2018 ///
+        ent_restaurant_2018 ent_rental_2018 ent_other_2018
+    duplicates drop grappe menage, force
+    tempfile ent_screen_2018
+    save `ent_screen_2018'
+restore
+
+merge m:1 grappe menage using `ent_screen_2018', nogen keep(master match)
+
+* Fill enterprise type dummies for HHs with no enterprise
+foreach v in ent_food_2018 ent_confection_2018 ent_construct_2018 ///
+    ent_commerce_2018 ent_liberal_2018 ent_services_2018 ///
+    ent_restaurant_2018 ent_rental_2018 ent_other_2018 {
+    replace `v' = 0 if missing(`v')
+    label variable `v' "HH has enterprise: `: variable label `v''"
+}
+
 tempfile data_2018
 save `data_2018'
 
@@ -268,6 +307,7 @@ capture rename ent_2021 ent_2021  // already named
 * Individual characteristics
 rename zae zae_2021
 rename milieu milieu_2021
+capture rename lien lien_2021
 
 * Enterprise variables
 foreach v in proprietor_id nonag_id is_proprietor {
@@ -404,6 +444,40 @@ label variable is_hh_head_2021 "Is household head in 2021"
 * Enterprise household dummy
 bysort hhid: egen byte hh_has_enterprise_2021 = max(ent_2021)
 label variable hh_has_enterprise_2021 "Household has at least one enterprise in 2021"
+
+* ----- Merge enterprise screening data for enterprise-type dummies -----
+* Source: s10a_me_sen2021 (HH-level screening: s10q02-s10q10)
+* NOTE: 2021 does not have s10q11 (filter), but s10q02-s10q10 are the same
+preserve
+    use "${data_2021}/s10a_me_sen2021.dta", clear
+    foreach v in s10q02 s10q03 s10q04 s10q05 s10q06 s10q07 s10q08 s10q09 s10q10 {
+        replace `v' = 0 if `v' != 1
+    }
+    rename s10q02 ent_food_2021
+    rename s10q03 ent_confection_2021
+    rename s10q04 ent_construct_2021
+    rename s10q05 ent_commerce_2021
+    rename s10q06 ent_liberal_2021
+    rename s10q07 ent_services_2021
+    rename s10q08 ent_restaurant_2021
+    rename s10q09 ent_rental_2021
+    rename s10q10 ent_other_2021
+    keep grappe menage ent_food_2021 ent_confection_2021 ent_construct_2021 ///
+        ent_commerce_2021 ent_liberal_2021 ent_services_2021 ///
+        ent_restaurant_2021 ent_rental_2021 ent_other_2021
+    duplicates drop grappe menage, force
+    tempfile ent_screen_2021
+    save `ent_screen_2021'
+restore
+
+merge m:1 grappe menage using `ent_screen_2021', nogen keep(master match)
+
+foreach v in ent_food_2021 ent_confection_2021 ent_construct_2021 ///
+    ent_commerce_2021 ent_liberal_2021 ent_services_2021 ///
+    ent_restaurant_2021 ent_rental_2021 ent_other_2021 {
+    replace `v' = 0 if missing(`v')
+    label variable `v' "HH has enterprise: `: variable label `v''"
+}
 
 tempfile data_2021
 save `data_2021'

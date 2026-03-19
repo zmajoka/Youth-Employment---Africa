@@ -277,11 +277,12 @@ global tfp_regressors log_val_capital log_val_inter_good log_val_hired_labor ///
 xtreg log_val_output $tfp_regressors [pw=hhweight_2018], fe vce(cluster grappe)
 
 * Export TFP production function estimates
+* Capture r(table) before putexcel set clears r() results
+matrix results = r(table)'
+
 putexcel set "${xlout}", sheet("TFP_Estimates") replace
 putexcel B1 = "TFP Production Function Estimates (Fixed Effects)"
 putexcel B3 = "Variable" C3 = "Coefficient" D3 = "Std Error" E3 = "P-value"
-
-matrix results = r(table)'
 matrix coef = results[1..., 1]
 matrix se   = results[1..., 2]
 matrix pval = results[1..., 4]
@@ -518,26 +519,29 @@ tabout formal_all3_2021 total if ent_2021==1 [iweight=hhweight_2021] using "$out
 
 
 *--- 2b: Non-family employees change ---
-putexcel B9 = "Non-Family Employee Changes (Panel Enterprises)"
-putexcel B10 = "Indicator" C10 = "Value"
+putexcel set "${xlout}", sheet("S2_Profile") modify
+putexcel B1 = "Section 2: Stylized Facts on the Profile"
+
+putexcel B3 = "Non-Family Employee Changes (Panel Enterprises)"
+putexcel B4 = "Indicator" C4 = "Value"
 
 * Average non-family employees in 2018 (panel enterprises)
 sum num_emp_2018 [aw=hhweight_2018] if ent_status==4
 local _mean = r(mean)
-putexcel B11 = "Avg non-family employees in 2018"
-putexcel C11 = `_mean', nformat("0.00")
+putexcel B5 = "Avg non-family employees in 2018"
+putexcel C5 = `_mean', nformat("0.00")
 
 * Average non-family employees in 2021 (panel enterprises)
 sum num_emp_2021 [aw=hhweight_2021] if ent_status==4
 local _mean = r(mean)
-putexcel B12 = "Avg non-family employees in 2021"
-putexcel C12 = `_mean', nformat("0.00")
+putexcel B6 = "Avg non-family employees in 2021"
+putexcel C6 = `_mean', nformat("0.00")
 
 * Number and share that increased
 count if change_num_emp > 0 & change_num_emp < . & ent_status==4
 local n_increased = r(N)
-putexcel B13 = "N enterprises that increased non-family employees"
-putexcel C13 = `n_increased'
+putexcel B7 = "N enterprises that increased non-family employees"
+putexcel C7 = `n_increased'
 
 sum change_num_emp [aw=hhweight_2018] if ent_status==4
 local n_total = r(N)
@@ -545,8 +549,8 @@ local n_total = r(N)
 gen byte emp_increased = (change_num_emp > 0) if ent_status==4 & !missing(change_num_emp)
 sum emp_increased [aw=hhweight_2018] if ent_status==4
 local _mean = r(mean) * 100
-putexcel B14 = "Share that increased non-family employees (%)"
-putexcel C14 = `_mean', nformat("0.0")
+putexcel B8 = "Share that increased non-family employees (%)"
+putexcel C8 = `_mean', nformat("0.0")
 
 *--- 2c: Sector of operation ---
 tabout sector_2018 total if ent_2018==1 [iweight=hhweight_2018] using "$output\Results.xls", append c(freq col row) format(0c 1p 1p) layout(cb)  h1(Sector of HHE, 2018)
@@ -746,17 +750,16 @@ capture program drop export_reg_results
 program define export_reg_results
     args sheet startrow
 
-    * Store e() results before any putexcel calls clear them
+    * Store e() results and r(table) before putexcel set clears r()
     local _eN = e(N)
     local _er2 = e(r2)
+    matrix results = r(table)'
 
     putexcel set "${xlout}", sheet("`sheet'") modify
 
     local r1 = `startrow'
     putexcel B`r1' = "Variable" C`r1' = "Coefficient" D`r1' = "Std Error" ///
         E`r1' = "P-value" F`r1' = "Sig"
-
-    matrix results = r(table)'
     local nrows = rowsof(results)
 
     matrix coef = results[1..., 1]
