@@ -116,7 +116,7 @@ preserve
         tv_2018 fer_2018 frigo_2018 cuisin_2018 ordin_2018 car_2018 ///
         superf_2018 grosrum_2018 petitrum_2018 volail_2018 ///
         logem_2018 mur_2018 toit_2018 sol_2018 ///
-        eauboi_ss_2018 elec_ac_2018 toilet_2018 ///
+        eauboi_ss_2018 has_electricity_2018 toilet_2018 ///
         dtot_2018 dali_2018 dnal_2018, ///
         by(hhid)
 
@@ -134,7 +134,7 @@ preserve
         has_bank ///
         tv fer frigo cuisin ordin car ///
         superf grosrum petitrum volail ///
-        logem mur toit sol eauboi_ss elec_ac toilet ///
+        logem mur toit sol eauboi_ss has_electricity toilet ///
         dtot dali dnal {
         capture rename `v'_2018 `v'
     }
@@ -186,7 +186,7 @@ preserve
         tv_2021 fer_2021 frigo_2021 cuisin_2021 ordin_2021 car_2021 ///
         superf_2021 grosrum_2021 petitrum_2021 volail_2021 ///
         logem_2021 mur_2021 toit_2021 sol_2021 ///
-        eauboi_ss_2021 elec_ac_2021 toilet_2021 ///
+        eauboi_ss_2021 has_electricity_2021 toilet_2021 ///
         dtot_2021 dali_2021 dnal_2021, ///
         by(hhid)
 
@@ -203,7 +203,7 @@ preserve
         has_bank location sector ///
         tv fer frigo cuisin ordin car ///
         superf grosrum petitrum volail ///
-        logem mur toit sol eauboi_ss elec_ac toilet ///
+        logem mur toit sol eauboi_ss has_electricity toilet ///
         dtot dali dnal {
         capture rename `v'_2021 `v'
     }
