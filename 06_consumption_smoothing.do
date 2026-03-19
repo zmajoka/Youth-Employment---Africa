@@ -112,7 +112,7 @@ preserve
         region_2018 milieu_2018 zae_2018 ///
         hgender_2018 hage_2018 hmstat_2018 heduc_2018 hdiploma_2018 ///
         hactiv7j_2018 hbranch_2018 hsectins_2018 ///
-        has_bank_2018 ///
+        has_bank_2018 location_2018 sector_2018 ///
         tv_2018 fer_2018 frigo_2018 cuisin_2018 ordin_2018 car_2018 ///
         superf_2018 grosrum_2018 petitrum_2018 volail_2018 ///
         logem_2018 mur_2018 toit_2018 sol_2018 ///
@@ -131,7 +131,7 @@ preserve
         pcexp poor welfare_quintile def_spa zref ///
         hhweight hhsize eqadu1 eqadu2 region milieu zae ///
         hgender hage hmstat heduc hdiploma hactiv7j hbranch hsectins ///
-        has_bank ///
+        has_bank location sector ///
         tv fer frigo cuisin ordin car ///
         superf grosrum petitrum volail ///
         logem mur toit sol eauboi_ss has_electricity toilet ///

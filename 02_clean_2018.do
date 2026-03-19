@@ -939,6 +939,23 @@ keep if _merge == 1 | _merge == 3
 tab _merge
 drop _merge
 
+*------------------------------------------------------------------------------
+* 4.2: Create location classification
+*------------------------------------------------------------------------------
+* Combines region and milieu into 4 categories:
+*   1 = Dakar (urban), 2 = Thiès (urban), 3 = Other urban, 4 = Rural
+* Region codes: 1=Dakar, 7=Thiès; milieu: 1=Urban, 2=Rural
+
+gen location = .
+replace location = 1 if region == 1 & milieu == 1   // Dakar urban
+replace location = 2 if region == 7 & milieu == 1   // Thiès urban
+replace location = 3 if milieu == 1 & !inlist(region, 1, 7)  // Other urban
+replace location = 4 if milieu == 2                  // Rural
+
+label variable location "Location classification"
+label define location 1 "Dakar" 2 "Thiès" 3 "Other urban" 4 "Rural"
+label values location location
+
 ********************************************************************************
 * PART 5: CREDIT SECTION (SECTION 6) - HOUSEHOLD LEVEL
 ********************************************************************************
