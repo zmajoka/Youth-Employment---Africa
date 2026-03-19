@@ -378,7 +378,7 @@ use "${data_2021}/ehcvm_individu_sen2021", clear
 * Note: numind here is the INDIVIDUAL ID from the roster (s01q00a)
 * This is different from proprietor_id which identifies enterprise owners
 
-keep grappe menage numind hhid hhweight ///
+keep grappe menage numind hhid hhweight lien ///
      sexe age zae milieu csp activ7j ///
      educ_hi alfa educ_scol ethnie
 

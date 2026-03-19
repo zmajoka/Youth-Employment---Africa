@@ -418,7 +418,7 @@ drop hhid1
 * Note: numind here is the INDIVIDUAL ID from the roster (s01q00a)
 * This is different from proprietor_id which identifies enterprise owners
 
-keep grappe menage numind hhid hhweight ///
+keep grappe menage numind hhid hhweight lien ///
      sexe age zae milieu csp activ7j ///
      educ_hi alfab educ_scol
 

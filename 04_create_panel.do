@@ -112,6 +112,7 @@ capture rename ent_2018 ent_2018  // already named
 * Individual characteristics
 rename zae zae_2018
 rename milieu milieu_2018
+capture rename lien lien_2018
 
 * Enterprise variables (only exist for entrepreneurs)
 foreach v in proprietor_id nonag_id is_proprietor {
@@ -306,6 +307,7 @@ capture rename ent_2021 ent_2021  // already named
 * Individual characteristics
 rename zae zae_2021
 rename milieu milieu_2021
+capture rename lien lien_2021
 
 * Enterprise variables
 foreach v in proprietor_id nonag_id is_proprietor {
