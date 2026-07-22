@@ -291,6 +291,53 @@ label values is_highest_revenue is_highest_revenue
 * If owner has multiple enterprises with same revenue, multiple will = 1
 
 *------------------------------------------------------------------------------
+* 1.10b: Save enterprise-level file (BEFORE collapse to main enterprise)
+* This preserves one row per enterprise for the enterprise-level gazelle analysis.
+* Note: household weights and other HH characteristics will be merged in later
+* at the panel-construction stage.
+*------------------------------------------------------------------------------
+
+preserve
+    * Create a unique enterprise-level ID (proprietor_id may repeat within a household
+    * if the same person owns multiple enterprises — need a within-proprietor enterprise number)
+    sort grappe menage proprietor_id
+    bysort grappe menage proprietor_id: gen ent_num = _n
+    
+    * Enterprise-unique ID: household_proprietor_enterpriseNumber
+    gen enterprise_uid = strofreal(grappe,"%3.0f") + "_" + ///
+                         strofreal(menage,"%02.0f") + "_" + ///
+                         strofreal(proprietor_id,"%02.0f") + "_" + ///
+                         strofreal(ent_num,"%02.0f")
+    label variable enterprise_uid "Unique enterprise ID (household_proprietor_entnum)"
+    
+    * Count enterprises per proprietor
+    bysort grappe menage proprietor_id: gen n_enterprises_prop = _N
+    label variable n_enterprises_prop "Number of enterprises owned by this proprietor"
+    
+    * Keep the key variables for the enterprise-level gazelle calculation
+    keep grappe menage proprietor_id enterprise_uid ent_num n_enterprises_prop ///
+         nonag_id revenue expenses profit value_total ///
+         num_emp num_emp_tot num_emp_child ///
+         s10q17a hires_nonhh_workers
+    
+    * Rename with _2021 suffix so they don't clash on merge later
+    rename revenue         revenue_2021
+    rename expenses        expenses_2021
+    rename profit          profit_2021
+    rename value_total     value_total_2021
+    rename num_emp         num_emp_2021
+    rename num_emp_tot     num_emp_tot_2021
+    rename num_emp_child   num_emp_child_2021
+    rename hires_nonhh_workers hires_nonhh_workers_2021
+    rename n_enterprises_prop  n_enterprises_prop_2021
+    
+    * Save
+	count
+    save "${intermediate}/SEN_enterprises_2021.dta", replace
+    di as text _n "Saved enterprise-level 2021 file: `r(N)' rows"
+restore
+
+*------------------------------------------------------------------------------
 * 1.11: Keep highest-revenue enterprise per owner
 *------------------------------------------------------------------------------
 
@@ -378,8 +425,8 @@ use "${data_2021}/ehcvm_individu_sen2021", clear
 * Note: numind here is the INDIVIDUAL ID from the roster (s01q00a)
 * This is different from proprietor_id which identifies enterprise owners
 
-keep grappe menage numind hhid hhweight ///
-     sexe age zae milieu csp activ7j ///
+keep grappe menage numind hhid hhweight lien ///
+     sexe age mstat zae milieu csp activ7j ///
      educ_hi alfa educ_scol ethnie
 
 * Note: In 2021, ethnicity (ethnie) already exists in individual dataset
@@ -395,6 +442,7 @@ rename educ_scol educ_scol_2021
 rename activ7j activ7j_2021
 rename csp hcsp_2021
 rename hhweight hhweight_2021
+rename mstat mstat_2021
 rename ethnie ethnie_2021  // CHANGED: directly from individual dataset in 2021
 
 *------------------------------------------------------------------------------
@@ -487,7 +535,7 @@ preserve
     
     * Keep only relevant variables
     keep grappe menage hhid membres__id ///
-         s04q06 s04q07 s04q08 s04q09 s04q13 s04q14 /// Working status questions
+         s04q06 s04q07 s04q08 s04q09 s04q11 s04q13 s04q14 /// Working status questions
          s04q28a s04q28b /// type of work for primary and secondary emp
          s04q15 s04q17 s04q19 // Job search questions
     
@@ -666,40 +714,50 @@ drop _merge
 * 3.1: PRIMARY EMPLOYMENT - Employment status
 *------------------------------------------------------------------------------
 
-* Working status (employed if worked in last 7 days)
-* Employed includes: own account work, wage work, unpaid family work
-gen employed = 0
-replace employed = 1 if s04q06==1  // Worked in field/garden for own account
-replace employed = 1 if s04q07==1  // Worked with pay for own account
-replace employed = 1 if s04q08==1  // Worked with pay for the state
-replace employed = 1 if s04q09==1  // Worked with pay as apprentice
-replace employed = 1 if s04q13==1  // Worked in field for HH member without pay
-replace employed = 1 if s04q14==1  // Worked in commerce for HH member without pay
+gen working_age = (age_2021 >= 15 & age_2021 <= 64)
+label variable working_age "Working age population (15-64)"
 
-label variable employed "Employed (worked in last 7 days, paid or unpaid)"
+* Household dependency ratio: (children <15 + elderly 65+) / working-age (15-64)
+gen byte is_dependent = (age_2021 < 15 | age_2021 > 64) if !missing(age_2021)
+bysort hhid: egen n_dependents = total(is_dependent)
+bysort hhid: egen n_working_age = total(working_age)
+gen dep_ratio = n_dependents / n_working_age if n_working_age > 0
+replace dep_ratio = . if n_working_age == 0
+label variable dep_ratio "Household dependency ratio (dependents/working-age)"
+drop is_dependent n_dependents n_working_age
+
+* Working status (employed if worked in last 7 days or temporarily absent)
+gen employed = 0 if working_age==1
+replace employed = 1 if working_age==1 & s04q06==1  // Worked in field/garden for own account
+replace employed = 1 if working_age==1 & s04q07==1  // Worked with pay for own account
+replace employed = 1 if working_age==1 & s04q08==1  // Worked with pay for the state
+replace employed = 1 if working_age==1 & s04q09==1  // Worked with pay as apprentice
+replace employed = 1 if working_age==1 & s04q11==1  // Has usual job but temporarily absent
+replace employed = 1 if working_age==1 & s04q13==1  // Worked in field for HH member without pay
+replace employed = 1 if working_age==1 & s04q14==1  // Worked in commerce for HH member without pay
+
+label variable employed "Employed (working age, worked or temporarily absent)"
 label define employed 0 "Not employed" 1 "Employed"
 label values employed employed
 
-* Unemployed (not working but looking for job)
-gen unemployed = 0
-replace unemployed = 1 if employed==0 & (s04q15==1 | s04q17==1)
+* Labor force = employed + looking for work (working age only)
+gen in_labor_force = 0 if working_age==1
+replace in_labor_force = 1 if employed==1
+replace in_labor_force = 1 if working_age==1 & employed==0 & (s04q15==1 | s04q17==1)
+label variable in_labor_force "In labor force (employed or unemployed, ages 15-64)"
 
-label variable unemployed "Unemployed (not working but looking and available)"
-label define unemployed 0 "Not unemployed" 1 "Unemployed"
+* Unemployed (defined within labor force only, so denominator = labor force)
+gen unemployed = 0 if in_labor_force==1
+replace unemployed = 1 if in_labor_force==1 & employed==0
+label variable unemployed "Unemployed (in labor force but not working)"
+label define unemployed 0 "Employed" 1 "Unemployed"
 label values unemployed unemployed
-
-* Labor force participation (employed or unemployed)
-gen in_labor_force = (employed==1 | unemployed==1)
-label variable in_labor_force "In labor force (employed or unemployed)"
-
-gen working_age = (age_2021 >= 15 & age_2021 <= 64)
-label variable working_age "Working age population (15-64)"
 
 *------------------------------------------------------------------------------
 * 3.2: PRIMARY EMPLOYMENT - Sector and occupation
 *------------------------------------------------------------------------------
 
-* Industry/sector - recode to match enterprise categories
+* Industry/sector - recode to match enterprise categories (employed working-age only)
 recode s04q30b ///
     (1 2   = 1 "Ag and extractives") ///
     (3     = 2 "Manufacturing") ///
@@ -708,8 +766,9 @@ recode s04q30b ///
     (8     = 6 "Transport") ///
     (19    = 7 "Personal services") ///
     (10/18 20 21 = 9 "Other"), ///
-    gen(sector_work) 
+    gen(sector_work)
 
+replace sector_work = . if employed!=1
 label variable sector_work "Sector of work (primary employment)"
 
 *------------------------------------------------------------------------------
@@ -720,24 +779,44 @@ label variable sector_work "Sector of work (primary employment)"
 * 1-6 = Paid work, 7 = Unpaid intern/apprentice, 8 = Unpaid family worker,
 * 9 = Own-account worker, 10 = Employer
 
-gen emp_type = .
-replace emp_type = 1 if inrange(s04q39, 1, 6)   // Paid work (salaried + paid apprentices)
-replace emp_type = 2 if s04q39 == 7             // Unpaid work (unpaid intern/apprentice)
-replace emp_type = 3 if s04q39 == 8             // Unpaid family worker
-replace emp_type = 4 if s04q39 == 9             // Own account worker (self-employed)
-replace emp_type = 5 if s04q39 == 10            // Employer
+gen emp_type = . if employed==1
+replace emp_type = 1 if employed==1 & inrange(s04q39, 1, 7)   // Wage worker (all salaried + apprentices)
+replace emp_type = 2 if employed==1 & s04q39 == 9             // Own account worker (self-employed)
+replace emp_type = 3 if employed==1 & s04q39 == 10            // Employer
+replace emp_type = 4 if employed==1 & s04q39 == 8             // Unpaid family worker
 
 label variable emp_type "Type of employment"
 label define emp_type ///
-    1 "Paid work" ///
-    2 "Unpaid work" ///
-    3 "Unpaid family worker" ///
-    4 "Own account worker" ///
-    5 "Employer"
+    1 "Wage worker" ///
+    2 "Own account worker" ///
+    3 "Employer" ///
+    4 "Unpaid family worker"
 label values emp_type emp_type
 
 *------------------------------------------------------------------------------
-* 3.3b: PRIMARY EMPLOYMENT - Formal employment (pension contribution)
+* 3.3b: WORK ACTIVITY CATEGORIES (working-age population)
+*------------------------------------------------------------------------------
+
+gen work_activity = . if working_age==1
+* 1. Agriculture (any employment type in ag sector)
+replace work_activity = 1 if employed==1 & sector_work==1
+* 2. HH enterprise non-ag (self-employed, employer, unpaid family worker not in ag)
+replace work_activity = 2 if employed==1 & sector_work!=1 & !missing(sector_work) & inlist(s04q39, 8, 9, 10)
+* 3. Wage worker non-ag (all salaried/apprentice categories not in ag)
+replace work_activity = 3 if employed==1 & sector_work!=1 & !missing(sector_work) & inrange(s04q39, 1, 7)
+* 4. Not working
+replace work_activity = 4 if working_age==1 & employed==0
+
+label variable work_activity "Work activity category (working-age)"
+label define work_activity ///
+    1 "Agriculture" ///
+    2 "HH enterprise (non-ag)" ///
+    3 "Wage worker (non-ag)" ///
+    4 "Not working"
+label values work_activity work_activity
+
+*------------------------------------------------------------------------------
+* 3.3c: PRIMARY EMPLOYMENT - Formal employment (pension contribution)
 *------------------------------------------------------------------------------
 
 * Formal employment: contributes to IPRES, FNR, or Retraite Complémentaire (s04q38)
@@ -897,6 +976,17 @@ label variable total_comp_month_sec "Total monthly compensation (secondary job, 
 egen total_emp_income_month = rowtotal(total_comp_month total_comp_month_sec)
 label variable total_emp_income_month "Total monthly employment income (both jobs, FCFA)"
 
+*------------------------------------------------------------------------------
+* 3.8: MONTHLY INCOME (unified measure for transition analysis)
+*------------------------------------------------------------------------------
+* Wage workers (s04q39 = 1-7): salary + bonuses (primary job only)
+* Own-account workers / employers (s04q39 = 9, 10): enterprise profit
+
+gen monthly_income = .
+replace monthly_income = salary_month + bonus_month if inrange(s04q39, 1, 7) & employed==1
+replace monthly_income = profit if inlist(s04q39, 9, 10) & employed==1
+label variable monthly_income "Monthly income (wage+bonus for workers, profit for self-employed)"
+
 ********************************************************************************
 * PART 4: MERGE HOUSEHOLD-LEVEL DATA
 ********************************************************************************
@@ -958,6 +1048,23 @@ merge n:1 hhid using `welfaredata'
 
 tab _merge
 drop _merge
+
+*------------------------------------------------------------------------------
+* 4.3: Create location classification
+*------------------------------------------------------------------------------
+* Combines region and milieu into 4 categories:
+*   1 = Dakar (urban), 2 = Thiès (urban), 3 = Other urban, 4 = Rural
+* Region codes: 1=Dakar, 7=Thiès; milieu: 1=Urban, 2=Rural
+
+gen location = .
+replace location = 1 if region == 1 & milieu == 1   // Dakar urban
+replace location = 2 if region == 7 & milieu == 1   // Thiès urban
+replace location = 3 if milieu == 1 & !inlist(region, 1, 7)  // Other urban
+replace location = 4 if milieu == 2                  // Rural
+
+label variable location "Location classification"
+label define location 1 "Dakar" 2 "Thiès" 3 "Other urban" 4 "Rural"
+label values location location
 
 ********************************************************************************
 * PART 5: CREDIT SECTION (SECTION 6) - HOUSEHOLD LEVEL - 2021
@@ -1217,6 +1324,50 @@ replace hh_remit_total_annual = 0 if _merge == 1
 replace hh_remit_from_abroad = 0 if _merge == 1
 
 drop _merge
+
+********************************************************************************
+* PART 6b: BANK ACCOUNT AND INTERNET ACCESS (from ehcvm_individu) - 2021
+********************************************************************************
+
+* These variables exist in the raw ehcvm_individu data but were not kept in
+* Part 2 (which only kept demographics). We reload and merge them here.
+* Source: ehcvm_individu_sen2021 — variables "bank" and "internet"
+
+*------------------------------------------------------------------------------
+* 6b.1: Bank account — HH-level indicator
+*------------------------------------------------------------------------------
+* "bank" = has bank or other financial account (individual-level, coded 1=yes)
+* We collapse to HH level: 1 if any member has an account.
+
+preserve
+    use "${data_2021}/ehcvm_individu_sen2021", clear
+    gen has_bank_ind = (bank == 1) if !missing(bank)
+    collapse (max) has_bank = has_bank_ind, by(grappe menage)
+    label variable has_bank "HH has bank/financial account"
+    tempfile bank_2021
+    save `bank_2021'
+restore
+
+merge m:1 grappe menage using `bank_2021', nogen keep(master match)
+replace has_bank = 0 if missing(has_bank)
+
+*------------------------------------------------------------------------------
+* 6b.2: Internet access — individual-level indicator
+*------------------------------------------------------------------------------
+* "internet" = individual uses internet (coded 0/1)
+
+preserve
+    use "${data_2021}/ehcvm_individu_sen2021", clear
+    keep grappe menage numind internet
+    rename internet has_internet
+    label variable has_internet "Individual has internet access"
+    tempfile internet_2021
+    save `internet_2021'
+restore
+
+merge 1:1 grappe menage numind using `internet_2021', nogen keep(master match)
+replace has_internet = 0 if missing(has_internet)
+
 
 ********************************************************************************
 * PART 7: FINAL ORGANIZATION - 2021

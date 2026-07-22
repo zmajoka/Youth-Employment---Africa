@@ -72,14 +72,13 @@ global gdpdef_2021 = 213.67
 * PART 1: LOAD DATA AND CREATE REGRESSION VARIABLES
 ********************************************************************************
 
-di as text _n "=============================================="
-di as text "LOADING PANEL DATA AND CREATING VARIABLES"
-di as text "=============================================="
-
 use "${final}/SEN_panel_2018_2021.dta", clear
 
 gen indweight2018 = hhweight/hhsize_2018
 gen indweight2021 = hhweight/hhsize_2021
+
+svyset [pweight = hhweight_2018], psu(grappe)
+
 
 ********************************************************************************
 * PART 1a: Additional Summary Stats
@@ -106,26 +105,26 @@ restore
 *access to credit and source of credit (individual level)
 
 preserve
-sort hhid hh_has_loan_2018 hh_has_enterprise_2018
-collapse (first) hh_has_loan_2018 hh_has_enterprise_2018 hhweight, by(hhid)
-collapse hh_has_loan_2018 [pweight=hhweight], by(hh_has_enterprise_2018)
+sort hhid hh_got_credit_2018 hh_has_enterprise_2018
+collapse (first) hh_got_credit_2018 hh_has_enterprise_2018 hhweight, by(hhid)
+collapse hh_got_credit_2018 [pweight=hhweight], by(hh_has_enterprise_2018)
 outsheet using "$output\credit_access_hh2018.xls", replace
 restore
 
 preserve
-sort hhid hh_has_loan_2021 hh_has_enterprise_2021
-collapse (first) hh_has_loan_2021 hh_has_enterprise_2021 hhweight, by(hhid)
-collapse hh_has_loan_2021 [pweight=hhweight], by(hh_has_enterprise_2021)
+sort hhid hh_got_credit_2021 hh_has_enterprise_2021
+collapse (first) hh_got_credit_2021 hh_has_enterprise_2021 hhweight, by(hhid)
+collapse hh_got_credit_2021 [pweight=hhweight], by(hh_has_enterprise_2021)
 outsheet using "$output\credit_access_hh2021.xls", replace
 restore
 
 preserve
-collapse ind_has_loan_2018 [pweight=indweight2018], by(ent_2018)
+collapse ind_got_credit_2018 [pweight=indweight2018], by(ent_2018)
 outsheet using "$output\credit_access_ind_2018.xls", replace
 restore
 
 preserve
-collapse ind_has_loan_2021 [pweight=indweight2021], by(ent_2021)
+collapse ind_got_credit_2021 [pweight=indweight2021], by(ent_2021)
 outsheet using "$output\credit_access_ind_2021.xls", replace
 restore
 
@@ -226,15 +225,131 @@ foreach yr in 2018 2021 {
         if ent_`yr' == 1
     label variable formal_all3_`yr' "Formal by all 3 definitions (`yr')"
 }
+ 
+*------------------------------------------------------------------------------
+* 1.5: HH enterprise entry and exit at the individual level
+*------------------------------------------------------------------------------
 
+* Aligns with the transition matrix by using work_activity_YYYY == 2
+* (HH enterprise as main activity) rather than ent_YYYY (which includes
+* enterprise as secondary activity).
+*
+* Two shares reported, with different denominators (both are the natural
+* denominator for their respective question):
+*   (i)  ENTRY: share of individuals NOT in HH enterprise in 2018 who
+*        moved into HH enterprise as their main activity by 2021
+*   (ii) EXIT: share of individuals in HH enterprise in 2018 who were
+*        no longer there by 2021
+*
+* Both weighted by hhweight_2018; sample restricted to matched, validated
+* individuals with non-missing work_activity in both waves (same restriction
+* as sample_trans in the transition matrix do-file).
+*------------------------------------------------------------------------------
+
+* Build the sample restriction to match the transition matrix
+gen byte hhe_sample = (ind_matched == 1 & ind_validated == 1 ///
+    & !missing(work_activity_2018) & !missing(work_activity_2021))
+
+* Define entry and exit into/out of HH enterprise as main activity
+gen byte hhe_2018 = (work_activity_2018 == 2) if hhe_sample == 1
+gen byte hhe_2021 = (work_activity_2021 == 2) if hhe_sample == 1
+
+* --- ENTRY: share of non-HHE-in-2018 who moved INTO HHE by 2021 ---
+tab hhe_2021 if hhe_sample == 1 & hhe_2018 == 0 [aweight=hhweight_2018]
+
+* Weighted count of new HHE entrants (population estimate)
+qui sum hhe_2021 [aweight=hhweight_2018] if hhe_sample == 1 & hhe_2018 == 0
+di as result "Weighted N of non-HHE individuals in 2018: " %12.0fc r(sum_w)
+di as result "Weighted N who moved INTO HHE by 2021:     " %12.0fc r(sum_w) * r(mean)
+
+* --- EXIT: share of HHE-in-2018 who were no longer HHE in 2021 ---
+
+tab hhe_2021 if hhe_sample == 1 & hhe_2018 == 1 [aweight=hhweight_2018]
+
+qui sum hhe_2021 [aweight=hhweight_2018] if hhe_sample == 1 & hhe_2018 == 1
+di as result "Weighted N of HHE individuals in 2018:            " %12.0fc r(sum_w)
+di as result "Weighted N who EXITED HHE by 2021:                " %12.0fc r(sum_w) * (1 - r(mean))
+di as result "Weighted N who stayed in HHE (retention rate):    " %12.0fc r(sum_w) * r(mean)
+
+* --- Export both to Results.xls ---
+tabout hhe_2021 if hhe_sample == 1 & hhe_2018 == 0 [iweight=hhweight_2018] ///
+    using "$output\Creation_destruction.xls", replace c(freq col) format(0c 1p) layout(cb) ///
+    h1("HH enterprise ENTRY (from non-HHE in 2018)")
+
+tabout hhe_2021 if hhe_sample == 1 & hhe_2018 == 1 [iweight=hhweight_2018] ///
+    using "$output\Creation_destruction.xls", append c(freq col) format(0c 1p) layout(cb) ///
+    h1("HH enterprise EXIT (from HHE in 2018)")
+
+*------------------------------------------------------------------------------
+* 1.6 HH enterprise entry and exit at the ENTERPRISE level
+*------------------------------------------------------------------------------
+* Using is_proprietor_YYYY to count enterprises rather than households.
+* One enterprise = one proprietor. A household can operate multiple
+* enterprises, and N_enterprises_hh_2018 / multiple_enterprises_2018 confirm
+* this is common.
+*
+* An enterprise:
+*   - Existed in 2018 if is_proprietor_2018 == 1
+*   - Existed in 2021 if is_proprietor_2021 == 1
+*   - Persisted if the same nonag_id is proprietor in both waves
+*   - Closed if proprietor in 2018 but not 2021
+*   - Was newly created if proprietor in 2021 but not 2018
+*
+* Weighted by hhweight_2018 for consistency with other analyses.
+*------------------------------------------------------------------------------
+
+* Diagnostic: how many enterprises are there in each wave?
+
+count if is_proprietor_2018 == 1
+di as result "Unweighted N of enterprises in 2018: " r(N)
+
+count if is_proprietor_2021 == 1
+di as result "Unweighted N of enterprises in 2021: " r(N)
+
+* Weighted counts
+qui count if is_proprietor_2018 == 1
+local n_ent_2018_uw = r(N)
+qui sum is_proprietor_2018 [aweight=hhweight_2018]
+di as result "Weighted N of enterprises in 2018: " %12.0fc r(sum_w) * r(mean)
+
+qui sum is_proprietor_2021 [aweight=hhweight_2018]
+di as result "Weighted N of enterprises in 2021: " %12.0fc r(sum_w) * r(mean)
+
+* --- ENTRY: newly created enterprises (proprietor in 2021 but not 2018) ---
+
+gen byte ent_new = (is_proprietor_2021 == 1 & is_proprietor_2018 != 1) if ind_matched == 1
+
+qui count if ent_new == 1
+di as result "Unweighted N of new enterprises: " r(N)
+
+qui sum ent_new [aweight=hhweight_2018] if ind_matched == 1 & is_proprietor_2021 == 1
+di as result "Weighted N of new enterprises: " %12.0fc r(sum_w) * r(mean)
+di as result "As share of 2021 enterprises: " %5.1f r(mean)*100 "%"
+
+* --- EXIT: enterprises that closed (proprietor in 2018 but not 2021) ---
+
+gen byte ent_closed = (is_proprietor_2018 == 1 & is_proprietor_2021 != 1) if ind_matched == 1
+
+qui count if ent_closed == 1
+di as result "Unweighted N of enterprises that closed: " r(N)
+
+qui sum ent_closed [aweight=hhweight_2018] if ind_matched == 1 & is_proprietor_2018 == 1
+di as result "Weighted N of enterprises that closed: " %12.0fc r(sum_w) * r(mean)
+di as result "As share of 2018 enterprises: " %5.1f r(mean)*100 "%"
+
+* --- Export summary to Results.xls ---
+tabout ent_new if ind_matched == 1 & is_proprietor_2021 == 1 [iweight=hhweight_2018] ///
+    using "$output\Creation_destruction.xls", append c(freq col) format(0c 1p) layout(cb) ///
+    h1("New enterprises in 2021 (proprietor in 2021 but not 2018)")
+
+tabout ent_closed if ind_matched == 1 & is_proprietor_2018 == 1 [iweight=hhweight_2018] ///
+    using "$output\Creation_destruction.xls", append c(freq col) format(0c 1p) layout(cb) ///
+    h1("Enterprises that closed by 2021 (proprietor in 2018 but not 2021)")
+	
 
 ********************************************************************************
 * PART 2: TFP ESTIMATION (preserve/restore)
 ********************************************************************************
-
-di as text _n "=============================================="
-di as text "ESTIMATING TFP"
-di as text "=============================================="
 
 preserve
 
@@ -344,9 +459,6 @@ label variable tfp_increased "TFP increased between 2018 and 2021"
 * PART 3: SECTION 1 — INTRODUCTION
 ********************************************************************************
 
-di as text _n "=============================================="
-di as text "SECTION 1: INTRODUCTION"
-di as text "=============================================="
 
 *% of HHs operating at least one enterprise 
 tabout hh_has_enterprise_2018 total [iweight=hhweight_2018] using "$output\Results.xls", append c(freq col row) format(0c 1p 1p) layout(cb) h1("% of HHs with an enterprise, 2018")
@@ -518,9 +630,7 @@ tabout emp_type_2021 total if sector_work_2021!=1 & working_age_2021==1 [iweight
 * PART 4: SECTION 2 — STYLIZED FACTS ON THE PROFILE
 ********************************************************************************
 
-di as text _n "=============================================="
-di as text "SECTION 2: PROFILE"
-di as text "=============================================="
+
 
 *--- 2a: Formality shares ---
 
@@ -644,9 +754,6 @@ restore
 * PART 5: SECTION 3 — PERFORMANCE (DESCRIPTIVE)
 ********************************************************************************
 
-di as text _n "=============================================="
-di as text "SECTION 3: PERFORMANCE (DESCRIPTIVE)"
-di as text "=============================================="
 
 putexcel set "${xlout}", sheet("S3_Performance") modify
 putexcel B1 = "Section 3: Stylized Facts on Performance"
@@ -754,9 +861,7 @@ putexcel D20 = (`_mean' * 100), nformat("0.0")
 * PART 6: SECTION 3 — REGRESSIONS (without cooperative)
 ********************************************************************************
 
-di as text _n "=============================================="
-di as text "SECTION 3: REGRESSIONS"
-di as text "=============================================="
+
 
 * Restrict sample for regressions (matching regressions.do)
 * Keep entrepreneurs, adults 15+
@@ -1954,7 +2059,7 @@ local row = 5
 putexcel B`row' = "Got credit (any source)"
 foreach g in 1 0 {
     local col = cond(`g'==1, "C", "D")
-    sum hh_has_loan_2021 [aw=hhweight_2021] if ent_2021 == `g'
+    sum hh_got_credit_2021 [aw=hhweight_2021] if ent_2021 == `g'
     local _mean = r(mean)
     putexcel `col'`row' = (`_mean' * 100), nformat("0.0")
 }
@@ -1964,7 +2069,7 @@ local row = `row' + 1
 putexcel B`row' = "  Formal source"
 foreach g in 1 0 {
     local col = cond(`g'==1, "C", "D")
-    sum hh_formal_credit_2021 [aw=hhweight_2021] if ent_2021 == `g' & hh_has_loan_2021 == 1
+    sum hh_formal_credit_2021 [aw=hhweight_2021] if ent_2021 == `g' & hh_got_credit_2021 == 1
     local _mean = r(mean)
     putexcel `col'`row' = (`_mean' * 100), nformat("0.0")
 }
@@ -1973,7 +2078,7 @@ local row = `row' + 1
 putexcel B`row' = "  Informal source"
 foreach g in 1 0 {
     local col = cond(`g'==1, "C", "D")
-    sum hh_informal_credit_2021 [aw=hhweight_2021] if ent_2021 == `g' & hh_has_loan_2021 == 1
+    sum hh_informal_credit_2021 [aw=hhweight_2021] if ent_2021 == `g' & hh_got_credit_2021 == 1
     local _mean = r(mean)
     putexcel `col'`row' = (`_mean' * 100), nformat("0.0")
 }
@@ -1996,7 +2101,7 @@ forvalues i = 1/4 {
     putexcel B`row' = "`src_lab_`i''"
     foreach g in 1 0 {
         local col = cond(`g'==1, "C", "D")
-        sum `src_var_`i'' [aw=hhweight_2021] if ent_2021 == `g' & hh_has_loan_2021 == 1
+        sum `src_var_`i'' [aw=hhweight_2021] if ent_2021 == `g' & hh_got_credit_2021 == 1
         local _mean = r(mean)
         putexcel `col'`row' = (`_mean' * 100), nformat("0.0")
     }
@@ -2007,7 +2112,7 @@ forvalues i = 1/4 {
 putexcel B`row' = "Mean credit amount (FCFA)"
 foreach g in 1 0 {
     local col = cond(`g'==1, "C", "D")
-    sum hh_total_credit_amount_2021 [aw=hhweight_2021] if ent_2021 == `g' & hh_has_loan_2021 == 1
+    sum hh_total_credit_amount_2021 [aw=hhweight_2021] if ent_2021 == `g' & hh_got_credit_2021 == 1
     local _mean = r(mean)
     putexcel `col'`row' = `_mean', nformat("#,##0")
 }
